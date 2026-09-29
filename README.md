@@ -1,46 +1,46 @@
 # pi-resume-aborted
 
-Extensión para [pi](https://pi.dev) que hace amigable retomar el trabajo después de cancelar con `Escape`.
+A [pi](https://pi.dev) extension that makes it easy to pick up after cancelling with `Escape`.
 
-Al cancelar, pi aborta la tool en curso (o la respuesta del modelo) y no hay forma de "reanudarla". Lo habitual es escribir algo como `.` para que siga, pero el modelo tiene que adivinar si querías repetir, saltar ese paso o cambiar de enfoque. Esta extensión elimina esa ambigüedad.
+When you cancel, pi aborts the running tool (or the model's response) and there is no way to "resume" it. The usual workaround is typing something like `.` so the model carries on, but then the model has to guess whether you wanted to retry, skip that step, or change approach. This extension removes that ambiguity.
 
-## Qué hace
+## What it does
 
-Tras cancelar, aparece un aviso encima del editor:
+After cancelling, a notice appears above the editor:
 
 ```
-⏸ Cancelado: bash · npm run build
-  "." reintentar  ·  alt+c seguir sin repetir  ·  alt+x corregir
+⏸ Cancelled: bash · npm run build
+  "." retry  ·  alt+c skip  ·  alt+x correct
 ```
 
-| Acción | Cómo | Qué recibe el modelo |
+| Action | How | What the model receives |
 |---|---|---|
-| Reintentar | `.` o `/retry` | "Lo cancelé, pero no por el enfoque: repite la tool con los mismos argumentos y continúa" |
-| Seguir sin repetir | `alt+c` o `/skip` | "Lo cancelé a propósito: no lo repitas y sigue con la tarea" |
-| Corregir | `alt+x` o `/fix` | Rellena el editor con `No repitas … En su lugar, ` para que completes |
+| Retry | `.` or `/retry` | "I cancelled this tool call, but not because of the approach: run it again with the same arguments and continue" |
+| Skip | `alt+c` or `/skip` | "I intentionally cancelled it: do not repeat it and continue with the task" |
+| Correct | `alt+x` or `/fix` | Prefills the editor with `` Do not repeat `…`. Instead, `` so you can finish the sentence |
 
-- Si cortas al modelo **mientras escribe o piensa** (sin tool en marcha), el aviso dice *Respuesta interrumpida* y `.` le pide continuar donde lo dejó.
-- Con `write`, `edit` o comandos `bash` con efectos (`rm`, `git push`, `>`, `npm install`, migraciones…) avisa de que **puede haber quedado estado a medias**, y el modelo lo comprueba antes de repetir.
-- Cualquier otra cosa que escribas descarta el aviso y se envía tal cual.
-- La extensión **no re-ejecuta la tool por su cuenta**: envía un mensaje explícito al modelo, visible en la conversación, para que el resultado quede bien integrado.
+- If you interrupt the model **while it is writing or thinking** (no tool running), the notice says *Response interrupted* and `.` asks it to continue where it left off.
+- For `write`, `edit`, or `bash` commands with side effects (`rm`, `git push`, `>`, `npm install`, migrations…) it warns that **partial state may have been left behind**, and the model checks before retrying.
+- Typing anything else dismisses the notice and your message is sent unchanged.
+- The extension **never re-runs the tool itself**: it sends the model an explicit message, visible in the conversation, so the result stays properly integrated.
+- Works with providers that report cancellation as an error (e.g. Amazon Bedrock's `This operation was aborted`).
 
-## Instalación
+## Install
 
 ```bash
 pi install git:github.com/Syhids/pi-resume-aborted
 ```
 
-O pruébala sin instalar:
+Or try it without installing:
 
 ```bash
 pi -e git:github.com/Syhids/pi-resume-aborted
 ```
 
-## Notas
+## Notes
 
-- Los atajos `alt+…` requieren que el terminal envíe Option como Meta (ajuste del perfil en iTerm2 / Terminal.app). Si no, usa `/skip` y `/fix`.
-- Los textos de la interfaz y los mensajes al modelo están en español.
+- On macOS, `alt` is the **Option (⌥)** key, and the terminal must send it as Meta. In iTerm2: *Settings → Profiles → Keys → General → Left Option key: Esc+*. In Terminal.app: *Settings → Profiles → Keyboard → Use Option as Meta key*. Otherwise, use `/skip` and `/fix`.
 
-## Licencia
+## License
 
 MIT

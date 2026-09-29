@@ -1,12 +1,12 @@
 /**
  * resume-aborted
  *
- * Tras cancelar con Escape, muestra un aviso encima del editor y ofrece:
- *   "."  / /retry   → reintentar la tool cancelada (o continuar la respuesta)
- *   alt+c / /skip   → seguir sin repetir lo cancelado
- *   alt+x / /fix    → rellenar el editor para dar una corrección
+ * After cancelling with Escape, shows a notice above the editor and offers:
+ *   "."  / /retry   → retry the aborted tool (or continue the response)
+ *   alt+c / /skip   → move on without repeating what was aborted
+ *   alt+x / /fix    → prefill the editor so you can give a correction
  *
- * No re-ejecuta la tool por su cuenta: envía al modelo una instrucción explícita.
+ * It never re-runs the tool itself: it sends the model an explicit instruction.
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -20,7 +20,7 @@ interface AbortedTool {
 }
 
 interface AbortState {
-  /** "tool" = se cortó una tool en ejecución; "generating" = el modelo estaba escribiendo/pensando */
+  /** "tool" = a running tool was cut off; "generating" = the model was writing/thinking */
   kind: "tool" | "generating";
   tools: AbortedTool[];
 }
@@ -49,26 +49,26 @@ function isRisky(t: AbortedTool): boolean {
   return false;
 }
 
-/** Analiza los mensajes de la ejecución para saber si terminó por cancelación y qué se cortó. */
+/** Inspect the run's messages to tell whether it ended by cancellation and what was cut off. */
 function detectAbort(messages: any[]): AbortState | undefined {
   if (!messages?.length) return undefined;
   const last = messages[messages.length - 1];
 
   let i = messages.length - 1;
   if (last?.role === "assistant") {
-    // Algunos proveedores (p. ej. Bedrock) marcan la cancelación como error "This operation was aborted".
+    // Some providers (e.g. Bedrock) report cancellation as an error: "This operation was aborted".
     const aborted =
       last.stopReason === "aborted" ||
       (last.stopReason === "error" && /abort/i.test(String(last.errorMessage ?? "")));
     if (!aborted) return undefined;
-    // Si el modelo ya había empezado a escribir/pensar, lo cortado fue la respuesta, no una tool.
+    // If the model had already started writing/thinking, the response was cut off, not a tool.
     if ((last.content ?? []).length > 0) return { kind: "generating", tools: [] };
     i--;
   } else if (last?.role !== "toolResult") {
-    return undefined; // Una ejecución normal no termina en toolResult; si no, no es cancelación.
+    return undefined; // A normal run never ends on a toolResult; anything else is not a cancellation.
   }
 
-  // Resultados de tool inmediatamente anteriores
+  // Tool results immediately before
   const results: any[] = [];
   while (i >= 0 && messages[i]?.role === "toolResult") {
     results.unshift(messages[i]);
@@ -78,7 +78,7 @@ function detectAbort(messages: any[]): AbortState | undefined {
   const abortText = (r: any) =>
     /abort/i.test((r.content ?? []).map((c: any) => (c?.type === "text" ? c.text : "")).join(" "));
   let failed = results.filter((r) => r.isError && abortText(r));
-  // Si la ejecución terminó en un toolResult, fue cortada ahí aunque el texto no diga "abort".
+  // If the run ended on a toolResult, it was cut off there even if the text does not say "abort".
   if (failed.length === 0 && last?.role === "toolResult") failed = results.filter((r) => r.isError);
 
   if (assistant && failed.length > 0) {
@@ -95,28 +95,29 @@ function detectAbort(messages: any[]): AbortState | undefined {
 
 function retryPrompt(s: AbortState): string {
   if (s.kind === "generating") {
-    return "Te interrumpí mientras respondías, pero no por lo que estabas haciendo. Continúa exactamente donde lo dejaste.";
+    return "I interrupted you while you were responding, but not because of what you were doing. Continue exactly where you left off.";
   }
+  const many = s.tools.length > 1;
   const list = s.tools.map((t) => `- \`${describeTool(t, 200)}\``).join("\n");
   return (
-    "Cancelé con Escape la ejecución de esta(s) tool(s), pero no por el enfoque:\n" +
+    `I cancelled ${many ? "these tool calls" : "this tool call"} with Escape, but not because of the approach:\n` +
     `${list}\n` +
-    "Vuelve a ejecutarla(s) con los mismos argumentos (si puede haber quedado estado a medias, compruébalo antes) y continúa con la tarea."
+    `Run ${many ? "them" : "it"} again with the same arguments (if ${many ? "they" : "it"} may have left partial state behind, check that first) and continue with the task.`
   );
 }
 
 function skipPrompt(s: AbortState): string {
   const list = s.tools.map((t) => `\`${describeTool(t, 200)}\``).join(", ");
   return (
-    `Cancelé a propósito ${list}. No la repitas. ` +
-    "Continúa con la tarea sin ese paso (o por otro camino si es imprescindible)."
+    `I intentionally cancelled ${list}. Do not repeat ${s.tools.length > 1 ? "them" : "it"}. ` +
+    "Continue with the task without that step (or find another way if it is essential)."
   );
 }
 
 function fixPrefill(s: AbortState): string {
-  if (s.kind === "generating") return "Te paré porque ";
+  if (s.kind === "generating") return "I stopped you because ";
   const list = s.tools.map((t) => `\`${describeTool(t, 120)}\``).join(", ");
-  return `No repitas ${list}. En su lugar, `;
+  return `Do not repeat ${list}. Instead, `;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -136,23 +137,23 @@ export default function (pi: ExtensionAPI) {
 
     if (state.kind === "tool") {
       const [first, ...rest] = state.tools;
-      const extra = rest.length ? th.fg("dim", ` (+${rest.length} más)`) : "";
-      lines.push(`${th.fg("warning", "⏸ Cancelado:")} ${th.fg("text", describeTool(first))}${extra}`);
+      const extra = rest.length ? th.fg("dim", ` (+${rest.length} more)`) : "";
+      lines.push(`${th.fg("warning", "⏸ Cancelled:")} ${th.fg("text", describeTool(first))}${extra}`);
       if (state.tools.some(isRisky)) {
-        lines.push(th.fg("warning", "  ⚠ puede haber dejado estado a medias; el modelo lo comprobará antes de repetir"));
+        lines.push(th.fg("warning", "  ⚠ may have left partial state behind; the model will check before retrying"));
       }
       lines.push(
         th.fg("muted", "  ") +
-          `${k('"."')}${th.fg("muted", " reintentar")}${sep}` +
-          `${k(SHORTCUT_SKIP)}${th.fg("muted", " seguir sin repetir")}${sep}` +
-          `${k(SHORTCUT_FIX)}${th.fg("muted", " corregir")}`,
+          `${k('"."')}${th.fg("muted", " retry")}${sep}` +
+          `${k(SHORTCUT_SKIP)}${th.fg("muted", " skip")}${sep}` +
+          `${k(SHORTCUT_FIX)}${th.fg("muted", " correct")}`,
       );
     } else {
-      lines.push(`${th.fg("warning", "⏸ Respuesta interrumpida")}`);
+      lines.push(`${th.fg("warning", "⏸ Response interrupted")}`);
       lines.push(
         th.fg("muted", "  ") +
-          `${k('"."')}${th.fg("muted", " continuar")}${sep}` +
-          `${k(SHORTCUT_FIX)}${th.fg("muted", " corregir")}`,
+          `${k('"."')}${th.fg("muted", " continue")}${sep}` +
+          `${k(SHORTCUT_FIX)}${th.fg("muted", " correct")}`,
       );
     }
     ctx.ui.setWidget(WIDGET_KEY, lines);
@@ -165,19 +166,19 @@ export default function (pi: ExtensionAPI) {
   };
 
   const doSkip = (ctx: ExtensionContext) => {
-    if (!state) return ctx.ui.notify("No hay nada cancelado que saltar.", "info");
-    if (state.kind !== "tool") return ctx.ui.notify("La cancelación no fue de una tool; usa \".\" o corrige.", "info");
+    if (!state) return ctx.ui.notify("Nothing cancelled to skip.", "info");
+    if (state.kind !== "tool") return ctx.ui.notify("The cancellation was not a tool call; use \".\" or correct.", "info");
     send(ctx, skipPrompt(state));
   };
 
   const doFix = (ctx: ExtensionContext) => {
-    if (!state) return ctx.ui.notify("No hay nada cancelado que corregir.", "info");
+    if (!state) return ctx.ui.notify("Nothing cancelled to correct.", "info");
     const prefill = fixPrefill(state);
     clear(ctx);
     ctx.ui.setEditorText(prefill);
   };
 
-  // --- Ciclo de vida -------------------------------------------------------
+  // --- Lifecycle -----------------------------------------------------------
 
   pi.on("session_start", (_e, ctx) => clear(ctx));
   pi.on("agent_start", (_e, ctx) => clear(ctx));
@@ -188,7 +189,7 @@ export default function (pi: ExtensionAPI) {
     else clear(ctx);
   });
 
-  // "." justo después de cancelar → instrucción explícita. Cualquier otra entrada descarta el aviso.
+  // "." right after cancelling → explicit instruction. Any other input dismisses the notice.
   pi.on("input", (event, ctx) => {
     if (event.source === "extension") return { action: "continue" };
     if (!state) return { action: "continue" };
@@ -200,35 +201,35 @@ export default function (pi: ExtensionAPI) {
     return { action: "continue" };
   });
 
-  // --- Comandos y atajos ---------------------------------------------------
+  // --- Commands and shortcuts ---------------------------------------------------
 
   pi.registerCommand("retry", {
-    description: "Reintentar la tool cancelada con Escape (o continuar la respuesta)",
+    description: "Retry the tool cancelled with Escape (or continue the response)",
     handler: async (_args, ctx) => {
-      if (!state) return ctx.ui.notify("No hay nada cancelado que reintentar.", "info");
+      if (!state) return ctx.ui.notify("Nothing cancelled to retry.", "info");
       send(ctx, retryPrompt(state));
     },
   });
 
   pi.registerCommand("skip", {
-    description: "Seguir sin repetir la tool cancelada con Escape",
+    description: "Move on without repeating the tool cancelled with Escape",
     handler: async (_args, ctx) => doSkip(ctx),
   });
 
   pi.registerCommand("fix", {
-    description: "Corregir al modelo tras cancelar con Escape",
+    description: "Correct the model after cancelling with Escape",
     handler: async (_args, ctx) => doFix(ctx),
   });
 
   pi.registerShortcut(SHORTCUT_SKIP, {
-    description: "resume-aborted: seguir sin repetir lo cancelado",
+    description: "resume-aborted: skip what was cancelled",
     handler: (ctx) => {
       if (state) doSkip(ctx);
     },
   });
 
   pi.registerShortcut(SHORTCUT_FIX, {
-    description: "resume-aborted: corregir tras cancelar",
+    description: "resume-aborted: correct after cancelling",
     handler: (ctx) => {
       if (state) doFix(ctx);
     },

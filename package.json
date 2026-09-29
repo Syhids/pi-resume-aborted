@@ -1,6 +1,6 @@
 {
   "name": "pi-resume-aborted",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Pi extension: after cancelling with Escape, retry, skip or correct the aborted tool with one key",
   "keywords": ["pi-package", "pi-extension"],
   "license": "MIT",
