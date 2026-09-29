@@ -56,7 +56,11 @@ function detectAbort(messages: any[]): AbortState | undefined {
 
   let i = messages.length - 1;
   if (last?.role === "assistant") {
-    if (last.stopReason !== "aborted") return undefined;
+    // Algunos proveedores (p. ej. Bedrock) marcan la cancelación como error "This operation was aborted".
+    const aborted =
+      last.stopReason === "aborted" ||
+      (last.stopReason === "error" && /abort/i.test(String(last.errorMessage ?? "")));
+    if (!aborted) return undefined;
     // Si el modelo ya había empezado a escribir/pensar, lo cortado fue la respuesta, no una tool.
     if ((last.content ?? []).length > 0) return { kind: "generating", tools: [] };
     i--;
