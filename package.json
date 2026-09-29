@@ -1,0 +1,18 @@
+{
+  "name": "pi-resume-aborted",
+  "version": "0.1.0",
+  "description": "Pi extension: after cancelling with Escape, retry, skip or correct the aborted tool with one key",
+  "keywords": ["pi-package", "pi-extension"],
+  "license": "MIT",
+  "author": "Manuel Jiménez Torres",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Syhids/pi-resume-aborted.git"
+  },
+  "pi": {
+    "extensions": ["./extensions/resume-aborted.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
